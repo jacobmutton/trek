@@ -88,9 +88,9 @@ pub fn run(
             return emit_err(
                 ctx,
                 "run",
-                ErrorCode::AlreadyStaged,
+                ErrorCode::NotStaged,
                 &format!(
-                    "ticket `{}` is staged, not `{ticket}`; --in preprod requires the staged ticket to match -t",
+                    "ticket `{ticket}` is not staged (currently staged: `{}`); --in preprod requires the staged ticket to match -t",
                     s.ticket
                 ),
                 Some(json!({ "staged": s.ticket, "requested": ticket })),

@@ -6,6 +6,8 @@ use serde::Serialize;
 use crate::commands::require_workspace;
 use crate::config::Config;
 use crate::output::{OutputCtx, emit_ok};
+use crate::state::StateRoot;
+use crate::ticket;
 
 #[derive(Serialize)]
 struct WhereData {
@@ -23,7 +25,25 @@ pub fn run(ctx: OutputCtx, workspace: Option<&Path>) -> ExitCode {
         Err(code) => return code,
     };
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let (ticket, suffix, repo, location) = classify(&ws.config, &cwd);
+    // Best-effort registry: if we can't load state (no XDG dir yet, etc.),
+    // we still classify via path heuristics.
+    let known_tickets: Vec<(String, Vec<(String, Option<String>)>)> =
+        match StateRoot::for_workspace(ws.config.workspace.id) {
+            Ok(state) => ticket::list_all(&state)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|t| {
+                    let pairs = t
+                        .branches
+                        .iter()
+                        .map(|b| (b.repo.clone(), b.suffix.clone()))
+                        .collect();
+                    (t.id, pairs)
+                })
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+    let (ticket, suffix, repo, location) = classify(&ws.config, &cwd, &known_tickets);
     emit_ok(
         ctx,
         "where",
@@ -54,10 +74,13 @@ pub fn run(ctx: OutputCtx, workspace: Option<&Path>) -> ExitCode {
 }
 
 /// Walk repos and worktree dirs and figure out which (ticket, suffix, repo,
-/// preprod|worktree) `cwd` falls inside.
+/// preprod|worktree) `cwd` falls inside. Consults the ticket registry to
+/// disambiguate `<ticket><join><suffix>` vs `<ticket>` when the join string
+/// also appears inside ticket ids (e.g. "FUN-1234").
 fn classify(
     cfg: &Config,
     cwd: &Path,
+    known: &[(String, Vec<(String, Option<String>)>)],
 ) -> (
     Option<String>,
     Option<String>,
@@ -78,26 +101,7 @@ fn classify(
                     .next()
                     .map(|c| c.as_os_str().to_string_lossy().to_string());
                 if let Some(leaf) = leaf {
-                    let join = &cfg.branch.suffix_join;
-                    let (ticket, suffix) = if let Some(idx) = leaf.find(join.as_str()) {
-                        // Heuristic: a join hit means `<ticket><join><suffix>`.
-                        // Tickets in the wild often contain dashes too
-                        // (FUN-1234), so this is best-effort. We don't have
-                        // enough info to disambiguate without consulting the
-                        // ticket registry; for now, treat as no-suffix unless
-                        // the leaf contains the join more than once.
-                        let count = leaf.matches(join.as_str()).count();
-                        if count >= 2 {
-                            (
-                                leaf[..idx + leaf[idx..].find(join.as_str()).unwrap_or(0)].to_string(),
-                                Some(leaf[idx + join.len()..].to_string()),
-                            )
-                        } else {
-                            (leaf.clone(), None)
-                        }
-                    } else {
-                        (leaf.clone(), None)
-                    };
+                    let (ticket, suffix) = split_leaf(&leaf, &cfg.branch.suffix_join, &r.name, known);
                     return (Some(ticket), suffix, Some(r.name.clone()), Some("worktree"));
                 }
             }
@@ -105,6 +109,45 @@ fn classify(
         }
     }
     (None, None, None, None)
+}
+
+/// Match `leaf` against the known (ticket, suffix) pairs for this repo. Tries
+/// the longest matching ticket prefix first so `FUN-1234-migration` beats
+/// `FUN-1234` when both exist.
+fn split_leaf(
+    leaf: &str,
+    join: &str,
+    repo: &str,
+    known: &[(String, Vec<(String, Option<String>)>)],
+) -> (String, Option<String>) {
+    let mut candidates: Vec<(&str, Option<&str>)> = Vec::new();
+    for (id, pairs) in known {
+        for (r, suf) in pairs {
+            if r != repo {
+                continue;
+            }
+            let expected_leaf = match suf {
+                Some(s) => format!("{id}{join}{s}"),
+                None => id.clone(),
+            };
+            if expected_leaf == leaf {
+                candidates.push((id.as_str(), suf.as_deref()));
+            }
+        }
+    }
+    // Prefer the most specific match (longer ticket id, then with suffix).
+    candidates.sort_by_key(|(id, suf)| (std::cmp::Reverse(id.len()), suf.is_none()));
+    if let Some((id, suf)) = candidates.first() {
+        return ((*id).to_string(), suf.map(|s| s.to_string()));
+    }
+    // Fall back to the joiner heuristic if we have no registry hit.
+    if let Some(idx) = leaf.rfind(join) {
+        if leaf.matches(join).count() >= 2 {
+            let (id, suffix) = leaf.split_at(idx);
+            return (id.to_string(), Some(suffix[join.len()..].to_string()));
+        }
+    }
+    (leaf.to_string(), None)
 }
 
 fn path_starts_with(p: &Path, prefix: &Path) -> bool {

@@ -74,9 +74,7 @@ pub fn resolve_from(
     }
 }
 
-/// Validate a ticket id: path-safe chars + optional `ticket_regex`. The regex
-/// is checked at command time so we don't need a `regex` crate dep until
-/// later; for now we just ensure the basic shape.
+/// Validate a ticket id: path-safe chars + optional `ticket_regex`.
 pub fn validate_ticket(cfg: &Config, ticket: &str) -> Result<(), TicketError> {
     if ticket.is_empty() {
         return Err(TicketError::Empty);
@@ -90,8 +88,12 @@ pub fn validate_ticket(cfg: &Config, ticket: &str) -> Result<(), TicketError> {
     if ticket.starts_with('.') {
         return Err(TicketError::BadChar('.'));
     }
-    // ticket_regex enforcement is deferred to when we add the `regex` crate.
-    let _ = &cfg.branch.ticket_regex;
+    if let Some(pat) = &cfg.branch.ticket_regex {
+        let re = regex::Regex::new(pat).map_err(|e| TicketError::BadRegex(e.to_string()))?;
+        if !re.is_match(ticket) {
+            return Err(TicketError::RegexMismatch(pat.clone()));
+        }
+    }
     Ok(())
 }
 
@@ -101,6 +103,10 @@ pub enum TicketError {
     Empty,
     #[error("ticket id contains disallowed character {0:?}")]
     BadChar(char),
+    #[error("ticket_regex {0:?} is not a valid regex: {0}")]
+    BadRegex(String),
+    #[error("ticket id does not match ticket_regex {0:?}")]
+    RegexMismatch(String),
 }
 
 #[cfg(test)]
@@ -170,5 +176,43 @@ mod tests {
         assert!(validate_ticket(&c, "FUN/1234").is_err());
         assert!(validate_ticket(&c, "").is_err());
         assert!(validate_ticket(&c, "FUN-1234").is_ok());
+    }
+
+    #[test]
+    fn enforces_ticket_regex() {
+        let mut c = cfg();
+        c.branch.ticket_regex = Some("^[A-Z]+-\\d+$".to_string());
+        assert!(validate_ticket(&c, "FUN-1234").is_ok());
+        assert!(validate_ticket(&c, "fun-1234").is_err()); // lowercase
+        assert!(validate_ticket(&c, "FUN-abc").is_err()); // non-digit
+    }
+
+    #[test]
+    fn rejects_invalid_ticket_regex() {
+        let mut c = cfg();
+        c.branch.ticket_regex = Some("[unterminated".to_string());
+        assert!(matches!(
+            validate_ticket(&c, "FUN-1").unwrap_err(),
+            TicketError::BadRegex(_)
+        ));
+    }
+
+    #[test]
+    fn at_resolves_to_default_branch_when_suffix_empty() {
+        unsafe { std::env::set_var("USER", "jm") };
+        let c = cfg();
+        let r = &c.repos[0];
+        // `@` with no suffix is the default branch.
+        let from = resolve_from(&c, r, "FUN-1234", Some("@"), "main").unwrap();
+        assert_eq!(from, "jm-FUN-1234");
+    }
+
+    #[test]
+    fn per_repo_branch_pattern_overrides_workspace() {
+        unsafe { std::env::set_var("USER", "jm") };
+        let mut c = cfg();
+        c.repos[0].branch_pattern = Some("feature/{ticket}".to_string());
+        let names = resolve(&c, &c.repos[0], "FUN-1234", None).unwrap();
+        assert_eq!(names.branch, "feature/FUN-1234");
     }
 }

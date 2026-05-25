@@ -145,7 +145,7 @@ pub fn run(
             return emit_err(
                 ctx,
                 "stage",
-                ErrorCode::RepoNotInWorkspace,
+                ErrorCode::BranchNotFound,
                 &format!(
                     "ticket `{ticket_id}` is missing branches for: {}",
                     orphans.join(", ")
