@@ -63,12 +63,12 @@ fn run(cwd: &Path, args: &[&str]) -> Result<GitOutcome, GitError> {
 }
 
 pub fn fetch(cwd: &Path) -> Result<GitOutcome, GitError> {
-    run(cwd, &["fetch", "--prune"])
+    run(cwd, &["fetch"])
 }
 
 #[allow(dead_code)]
 pub fn fetch_remote(cwd: &Path, remote: &str) -> Result<GitOutcome, GitError> {
-    run(cwd, &["fetch", "--prune", remote])
+    run(cwd, &["fetch", remote])
 }
 
 pub fn checkout(cwd: &Path, branch: &str) -> Result<GitOutcome, GitError> {
