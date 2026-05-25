@@ -1,6 +1,5 @@
 use serde::Serialize;
 use serde_json::Value;
-use std::io::IsTerminal;
 use std::process::ExitCode;
 
 use crate::error::ErrorCode;
@@ -30,12 +29,6 @@ pub struct OutputCtx {
     pub quiet: bool,
     #[allow(dead_code)]
     pub verbose: bool,
-}
-
-impl OutputCtx {
-    pub fn use_color(self) -> bool {
-        !self.json && std::io::stderr().is_terminal()
-    }
 }
 
 /// A successful command result.

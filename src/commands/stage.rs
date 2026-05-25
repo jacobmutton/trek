@@ -7,7 +7,7 @@ use serde_json::json;
 use crate::audit;
 use crate::baseline;
 use crate::commands::{emit_internal, require_workspace};
-use crate::config::{Config, OrphanRepos, Repo};
+use crate::config::{OrphanRepos, Repo};
 use crate::error::ErrorCode;
 use crate::git::{exec, read};
 use crate::lock;
@@ -104,25 +104,16 @@ pub fn run(
     }
     let mut plans: Vec<Plan> = Vec::new();
     for repo in &ws.config.repos {
-        let target = ticket_rec
-            .branches
-            .iter()
-            .find(|b| b.repo == repo.name && b.suffix.as_deref() == suffix)
-            .map(|b| b.name.clone());
+        let target = ticket_rec.find(&repo.name, suffix).map(|b| b.name.clone());
         plans.push(Plan { repo, target });
     }
 
     // Preflight every repo we'll touch (declared OR orphan-baseline). Skip
-    // orphan repos when keep_others or orphan_repos=leave. We don't forbid
-    // detached HEAD on preprod because trek's own staging routinely leaves
-    // it detached (worktrees own the named branch refs).
+    // orphan repos when keep_others or orphan_repos=leave. We require strict
+    // start state: any prior trek stage clears via stage/cleanup, so detached
+    // HEAD here means the user touched preprod manually.
     let touch_orphan = !keep_others && ws.config.stage.orphan_repos != OrphanRepos::Leave;
-    let opts = Opts {
-        require_clean: true,
-        forbid_detached: false,
-        forbid_mid_op: true,
-        forbid_unpushed: true,
-    };
+    let opts = Opts::strict();
     let mut issues = Vec::new();
     for p in &plans {
         if p.target.is_none() && !touch_orphan {
@@ -429,6 +420,3 @@ fn snapshot_repo(repo: &Repo) -> anyhow::Result<Snapshot> {
     })
 }
 
-// `Config` and `naming` are imported above for future use (orphan tagging).
-#[allow(dead_code)]
-fn _unused_cfg(_c: &Config) {}

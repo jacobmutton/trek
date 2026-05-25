@@ -1,6 +1,6 @@
 //! Read-only git queries via git2. These never mutate the repo.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use git2::{ErrorCode as G2Code, Repository, StatusOptions};
@@ -151,13 +151,11 @@ pub fn origin_head(repo: &Repository) -> Result<Option<String>> {
     Ok(target.and_then(|t| t.strip_prefix("refs/remotes/origin/").map(|s| s.to_string())))
 }
 
-/// Convenience: open + current_branch + head_sha + is_dirty.
+/// Convenience: open + current_branch + head_sha + is_dirty for snapshotting.
 pub struct RepoState {
-    pub path: PathBuf,
     pub branch: Option<String>,
     pub head_sha: String,
     pub dirty: bool,
-    pub mid_op: Option<&'static str>,
 }
 
 pub fn state(path: &Path) -> Result<RepoState> {
@@ -165,12 +163,9 @@ pub fn state(path: &Path) -> Result<RepoState> {
     let branch = current_branch(&repo)?;
     let head_sha = head_sha(&repo)?;
     let dirty = is_dirty(&repo)?;
-    let mid_op = mid_operation(&repo);
     Ok(RepoState {
-        path: path.to_path_buf(),
         branch,
         head_sha,
         dirty,
-        mid_op,
     })
 }

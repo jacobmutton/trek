@@ -66,6 +66,7 @@ pub fn fetch(cwd: &Path) -> Result<GitOutcome, GitError> {
     run(cwd, &["fetch", "--prune"])
 }
 
+#[allow(dead_code)]
 pub fn fetch_remote(cwd: &Path, remote: &str) -> Result<GitOutcome, GitError> {
     run(cwd, &["fetch", "--prune", remote])
 }

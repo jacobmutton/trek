@@ -2,7 +2,6 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use serde::Serialize;
-use serde_json::json;
 
 use crate::audit;
 use crate::baseline;

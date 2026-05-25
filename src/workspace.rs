@@ -12,12 +12,6 @@ pub struct Workspace {
     pub config: Config,
 }
 
-impl Workspace {
-    pub fn toml_path(&self) -> PathBuf {
-        self.dir.join(TREK_TOML)
-    }
-}
-
 /// Resolve and load the workspace.
 ///
 /// Precedence:
@@ -82,11 +76,6 @@ impl WorkspaceError {
             Self::Io(_) | Self::Load(_) => ErrorCode::NoWorkspace,
         }
     }
-}
-
-/// Where to find a sibling file in the same workspace dir.
-pub fn workspace_file(ws: &Workspace, name: &str) -> PathBuf {
-    ws.dir.join(name)
 }
 
 pub fn ensure_dir(p: &Path) -> Result<()> {
