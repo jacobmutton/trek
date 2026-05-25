@@ -8,9 +8,8 @@ use std::process::ExitCode;
 use serde::Serialize;
 use serde_json::json;
 
-use crate::audit;
 use crate::baseline;
-use crate::commands::{emit_internal, require_workspace};
+use crate::commands::{emit_internal, finalize, require_workspace};
 use crate::config::Repo;
 use crate::error::ErrorCode;
 use crate::git::{exec, read};
@@ -198,7 +197,7 @@ pub fn run(
     } else {
         0
     };
-    audit::record(&state.audit_file(), cmd, argv, exit);
+    finalize(&ws, &state, cmd, argv, exit, Some(ticket), suffix);
 
     if any_failed {
         // Emit one structured error with per-repo details, but exit 3.

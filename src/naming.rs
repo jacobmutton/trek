@@ -112,7 +112,7 @@ pub enum TicketError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{BranchCfg, Repo, StageCfg, Workspace};
+    use crate::config::{BranchCfg, Hooks, Repo, StageCfg, Workspace};
     use uuid::Uuid;
 
     fn cfg() -> Config {
@@ -130,6 +130,7 @@ mod tests {
                 baseline: None,
                 branch_pattern: None,
             }],
+            hooks: Hooks::default(),
         }
     }
 

@@ -124,3 +124,30 @@ pub fn rev_parse(cwd: &Path, rev: &str) -> Result<String, GitError> {
     let out = run(cwd, &["rev-parse", "--verify", rev])?;
     Ok(out.stdout.trim().to_string())
 }
+
+/// `git push [-u] <remote> <branch>`.
+pub fn push(
+    cwd: &Path,
+    remote: &str,
+    branch: &str,
+    set_upstream: bool,
+) -> Result<GitOutcome, GitError> {
+    let mut args: Vec<&str> = vec!["push"];
+    if set_upstream {
+        args.push("-u");
+    }
+    args.push(remote);
+    args.push(branch);
+    run(cwd, &args)
+}
+
+/// `git rebase <onto>` in `cwd`.
+pub fn rebase(cwd: &Path, onto: &str) -> Result<GitOutcome, GitError> {
+    run(cwd, &["rebase", onto])
+}
+
+/// `git rebase --abort` — best-effort recovery.
+#[allow(dead_code)]
+pub fn rebase_abort(cwd: &Path) -> Result<GitOutcome, GitError> {
+    run(cwd, &["rebase", "--abort"])
+}

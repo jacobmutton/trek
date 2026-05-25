@@ -125,6 +125,33 @@ pub enum Command {
 
     /// Report the workspace and ticket the current directory belongs to.
     Where,
+
+    /// Diagnostic report: every repo's path, git-repo status, baseline,
+    /// plus any stale ticket entries.
+    Doctor,
+
+    /// Rebase a ticket's branches onto their recorded `from` refs
+    /// (stacked-rebase walker). Order: deps first.
+    Sync {
+        ticket: String,
+        #[arg(long, value_delimiter = ',')]
+        repos: Option<Vec<String>>,
+    },
+
+    /// Push a ticket's branches to a remote.
+    Push {
+        ticket: String,
+        #[arg(long)]
+        suffix: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        repos: Option<Vec<String>>,
+        /// Remote to push to (default: origin).
+        #[arg(long, default_value = "origin")]
+        remote: String,
+        /// Set upstream tracking on first push.
+        #[arg(short = 'u', long)]
+        set_upstream: bool,
+    },
 }
 
 #[derive(Copy, Clone, ValueEnum)]
@@ -225,6 +252,32 @@ pub fn run() -> ExitCode {
             repos.as_deref(),
             parallel,
             &cmd,
+        ),
+        Command::Doctor => commands::doctor::run(ctx, ws),
+        Command::Sync { ticket, repos } => commands::sync::run(
+            ctx,
+            ws,
+            &ticket,
+            repos.as_deref(),
+            non_interactive,
+            &argv,
+        ),
+        Command::Push {
+            ticket,
+            suffix,
+            repos,
+            remote,
+            set_upstream,
+        } => commands::push::run(
+            ctx,
+            ws,
+            &ticket,
+            suffix.as_deref(),
+            repos.as_deref(),
+            &remote,
+            set_upstream,
+            non_interactive,
+            &argv,
         ),
     }
 }

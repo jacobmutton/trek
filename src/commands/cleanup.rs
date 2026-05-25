@@ -11,9 +11,8 @@ use std::process::ExitCode;
 use serde::Serialize;
 use serde_json::json;
 
-use crate::audit;
 use crate::baseline;
-use crate::commands::{emit_internal, require_workspace};
+use crate::commands::{emit_internal, finalize, require_workspace};
 use crate::error::ErrorCode;
 use crate::git::{exec, read};
 use crate::lock;
@@ -370,7 +369,7 @@ pub fn run(
     } else {
         0
     };
-    audit::record(&state.audit_file(), "cleanup", argv, exit);
+    finalize(&ws, &state, "cleanup", argv, exit, Some(ticket_id), None);
 
     let body = CleanupData {
         ticket: ticket_id,

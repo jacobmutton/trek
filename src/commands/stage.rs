@@ -4,9 +4,8 @@ use std::process::ExitCode;
 use serde::Serialize;
 use serde_json::json;
 
-use crate::audit;
 use crate::baseline;
-use crate::commands::{emit_internal, require_workspace};
+use crate::commands::{emit_internal, finalize, require_workspace};
 use crate::config::{OrphanRepos, Repo};
 use crate::error::ErrorCode;
 use crate::git::{exec, read};
@@ -77,7 +76,7 @@ pub fn run(
             suffix,
             repos: vec![],
         };
-        audit::record(&state.audit_file(), "stage", argv, 0);
+        finalize(&ws, &state, "stage", argv, 0, Some(ticket_id), suffix);
         return emit_ok(ctx, "stage", body, || {
             eprintln!("stage: already staged for {ticket_id}");
         });
@@ -356,7 +355,7 @@ pub fn run(
     } else {
         0
     };
-    audit::record(&state.audit_file(), "stage", argv, exit);
+    finalize(&ws, &state, "stage", argv, exit, Some(ticket_id), suffix);
 
     let body = StageData {
         ticket: ticket_id,

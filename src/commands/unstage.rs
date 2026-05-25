@@ -3,9 +3,8 @@ use std::process::ExitCode;
 
 use serde::Serialize;
 
-use crate::audit;
 use crate::baseline;
-use crate::commands::{emit_internal, require_workspace};
+use crate::commands::{emit_internal, finalize, require_workspace};
 use crate::error::ErrorCode;
 use crate::git::{exec, read};
 use crate::lock;
@@ -194,12 +193,21 @@ pub fn run(
             return emit_internal(ctx, "unstage", &format!("clear staged: {e}"));
         }
     }
+    let ticket_for_hook = staged.ticket.clone();
     let exit = if any_failed {
         ErrorCode::PartialFailure.exit_code()
     } else {
         0
     };
-    audit::record(&state.audit_file(), "unstage", argv, exit);
+    finalize(
+        &ws,
+        &state,
+        "unstage",
+        argv,
+        exit,
+        Some(&ticket_for_hook),
+        staged.suffix.as_deref(),
+    );
 
     let body = UnstageData {
         ticket: staged.ticket.clone(),

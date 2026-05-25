@@ -7,6 +7,7 @@ mod commands;
 mod config;
 mod error;
 mod git;
+mod hooks;
 mod lock;
 mod naming;
 mod output;

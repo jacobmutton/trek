@@ -31,6 +31,13 @@ suffix_join = "-"
 [stage]
 orphan_repos = "baseline"   # baseline | leave | fail
 
+# [hooks]
+# post_start   = "echo ticket $TREK_TICKET started"
+# post_stage   = "..."
+# post_unstage = "..."
+# Hooks run via `sh -c`; env: TREK_COMMAND, TREK_TICKET, TREK_SUFFIX,
+# TREK_EXIT_CODE, TREK_WORKSPACE, TREK_WORKSPACE_ID.
+
 # [[repos]]
 # name         = "api"
 # path         = "~/code/api"

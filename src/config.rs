@@ -16,6 +16,49 @@ pub struct Config {
     pub stage: StageCfg,
     #[serde(default, rename = "repos")]
     pub repos: Vec<Repo>,
+    #[serde(default)]
+    pub hooks: Hooks,
+}
+
+/// Optional shell commands to run after specific trek operations. Each value
+/// is a shell command line; trek runs it via `sh -c` with these env vars
+/// available: TREK_COMMAND, TREK_TICKET, TREK_EXIT_CODE, TREK_WORKSPACE,
+/// TREK_WORKSPACE_ID. Hook failures are reported as warnings but do not
+/// change the command's exit code.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Hooks {
+    #[serde(default)]
+    pub post_start: Option<String>,
+    #[serde(default)]
+    pub post_adopt: Option<String>,
+    #[serde(default)]
+    pub post_stage: Option<String>,
+    #[serde(default)]
+    pub post_unstage: Option<String>,
+    #[serde(default)]
+    pub post_cleanup: Option<String>,
+    #[serde(default)]
+    pub post_refresh: Option<String>,
+    #[serde(default)]
+    pub post_sync: Option<String>,
+    #[serde(default)]
+    pub post_push: Option<String>,
+}
+
+impl Hooks {
+    pub fn for_command(&self, cmd: &str) -> Option<&str> {
+        match cmd {
+            "start" => self.post_start.as_deref(),
+            "adopt" => self.post_adopt.as_deref(),
+            "stage" => self.post_stage.as_deref(),
+            "unstage" => self.post_unstage.as_deref(),
+            "cleanup" => self.post_cleanup.as_deref(),
+            "refresh" => self.post_refresh.as_deref(),
+            "sync" => self.post_sync.as_deref(),
+            "push" => self.post_push.as_deref(),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
