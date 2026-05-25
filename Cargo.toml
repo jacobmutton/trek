@@ -1,0 +1,24 @@
+[package]
+name = "trek"
+version = "0.1.0"
+edition = "2024"
+description = "Multi-repo branch + worktree coordinator for ticket-driven work"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+anyhow = "1"
+thiserror = "2"
+owo-colors = "4"
+fs2 = "0.4"
+uuid = { version = "1", features = ["v4", "serde"] }
+dialoguer = "0.11"
+rayon = "1"
+git2 = { version = "0.20", default-features = false }
+dirs = "5"
+
+[profile.release]
+lto = "thin"
+strip = "symbols"
