@@ -255,3 +255,192 @@ pub fn expand_tilde(p: &Path) -> Result<PathBuf> {
         Ok(p.to_path_buf())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::sync::Mutex;
+
+    /// Tests in this module mutate XDG_CONFIG_HOME, which is process-global.
+    /// Serialize them so they don't race.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn write_toml(dir: &Path, name: &str, body: &str) -> PathBuf {
+        let p = dir.join(name);
+        let mut f = std::fs::File::create(&p).unwrap();
+        f.write_all(body.as_bytes()).unwrap();
+        p
+    }
+
+    #[test]
+    fn defaults_apply_when_branch_and_stage_omitted() {
+        let _lk = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let toml = write_toml(
+            dir.path(),
+            "trek.toml",
+            r#"
+                [workspace]
+                name = "t"
+                id = "00000000-0000-0000-0000-000000000001"
+            "#,
+        );
+        // Disable XDG overlay so the host env can't leak into the test.
+        unsafe { std::env::set_var("XDG_CONFIG_HOME", dir.path()) };
+        let cfg = Config::load(&toml).unwrap();
+        assert_eq!(cfg.branch.pattern, "{user}-{ticket}");
+        assert_eq!(cfg.branch.suffix_join, "-");
+        assert!(cfg.branch.ticket_regex.is_none());
+        assert_eq!(cfg.stage.orphan_repos, OrphanRepos::Baseline);
+        assert!(cfg.repos.is_empty());
+        assert!(cfg.hooks.post_start.is_none());
+    }
+
+    #[test]
+    fn rejects_duplicate_repo_names() {
+        let _lk = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let toml = write_toml(
+            dir.path(),
+            "trek.toml",
+            r#"
+                [workspace]
+                name = "t"
+                id = "00000000-0000-0000-0000-000000000001"
+                [[repos]]
+                name = "api"
+                path = "/tmp/a"
+                worktree_dir = "/tmp/wta"
+                [[repos]]
+                name = "api"
+                path = "/tmp/b"
+                worktree_dir = "/tmp/wtb"
+            "#,
+        );
+        unsafe { std::env::set_var("XDG_CONFIG_HOME", dir.path()) };
+        let err = Config::load(&toml).unwrap_err();
+        assert!(err.to_string().to_lowercase().contains("duplicate"));
+    }
+
+    #[test]
+    fn xdg_overlay_fills_only_unset_fields() {
+        let _lk = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let xdg = dir.path().join("trek");
+        std::fs::create_dir_all(&xdg).unwrap();
+        write_toml(
+            &xdg,
+            "config.toml",
+            r#"
+                [branch]
+                pattern = "xdg-{ticket}"
+                suffix_join = "_"
+                ticket_regex = "^FOO-\\d+$"
+                [stage]
+                orphan_repos = "leave"
+            "#,
+        );
+        unsafe { std::env::set_var("XDG_CONFIG_HOME", dir.path()) };
+        // trek.toml leaves branch.pattern at default → XDG should fill it.
+        let toml = write_toml(
+            dir.path(),
+            "trek.toml",
+            r#"
+                [workspace]
+                name = "t"
+                id = "00000000-0000-0000-0000-000000000001"
+            "#,
+        );
+        let cfg = Config::load(&toml).unwrap();
+        assert_eq!(cfg.branch.pattern, "xdg-{ticket}");
+        assert_eq!(cfg.branch.suffix_join, "_");
+        assert_eq!(cfg.branch.ticket_regex.as_deref(), Some("^FOO-\\d+$"));
+        assert_eq!(cfg.stage.orphan_repos, OrphanRepos::Leave);
+    }
+
+    #[test]
+    fn xdg_overlay_does_not_override_explicit_value() {
+        let _lk = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let xdg = dir.path().join("trek");
+        std::fs::create_dir_all(&xdg).unwrap();
+        write_toml(
+            &xdg,
+            "config.toml",
+            r#"
+                [branch]
+                pattern = "xdg-{ticket}"
+            "#,
+        );
+        unsafe { std::env::set_var("XDG_CONFIG_HOME", dir.path()) };
+        // trek.toml explicitly sets pattern → XDG should NOT overwrite.
+        let toml = write_toml(
+            dir.path(),
+            "trek.toml",
+            r#"
+                [workspace]
+                name = "t"
+                id = "00000000-0000-0000-0000-000000000001"
+                [branch]
+                pattern = "explicit-{ticket}"
+            "#,
+        );
+        let cfg = Config::load(&toml).unwrap();
+        assert_eq!(cfg.branch.pattern, "explicit-{ticket}");
+    }
+
+    #[test]
+    fn tilde_expansion() {
+        let home = dirs::home_dir().unwrap();
+        let p = expand_tilde(Path::new("~/foo")).unwrap();
+        assert_eq!(p, home.join("foo"));
+        let p = expand_tilde(Path::new("~")).unwrap();
+        assert_eq!(p, home);
+        let p = expand_tilde(Path::new("/abs")).unwrap();
+        assert_eq!(p, PathBuf::from("/abs"));
+        let p = expand_tilde(Path::new("rel")).unwrap();
+        assert_eq!(p, PathBuf::from("rel"));
+    }
+
+    #[test]
+    fn repo_lookup_and_pattern_override() {
+        let _lk = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        unsafe { std::env::set_var("XDG_CONFIG_HOME", dir.path()) };
+        let toml = write_toml(
+            dir.path(),
+            "trek.toml",
+            r#"
+                [workspace]
+                name = "t"
+                id = "00000000-0000-0000-0000-000000000001"
+                [[repos]]
+                name = "api"
+                path = "/tmp/api"
+                worktree_dir = "/tmp/wt/api"
+                [[repos]]
+                name = "web"
+                path = "/tmp/web"
+                worktree_dir = "/tmp/wt/web"
+                branch_pattern = "feature/{ticket}"
+            "#,
+        );
+        let cfg = Config::load(&toml).unwrap();
+        assert_eq!(cfg.repo("api").unwrap().name, "api");
+        assert!(cfg.repo("missing").is_none());
+        assert_eq!(cfg.branch_pattern_for(cfg.repo("api").unwrap()), "{user}-{ticket}");
+        assert_eq!(cfg.branch_pattern_for(cfg.repo("web").unwrap()), "feature/{ticket}");
+    }
+
+    #[test]
+    fn hooks_for_command_mapping() {
+        let mut h = Hooks::default();
+        h.post_start = Some("a".into());
+        h.post_stage = Some("b".into());
+        assert_eq!(h.for_command("start"), Some("a"));
+        assert_eq!(h.for_command("stage"), Some("b"));
+        assert_eq!(h.for_command("unstage"), None);
+        assert_eq!(h.for_command("nonexistent"), None);
+    }
+}

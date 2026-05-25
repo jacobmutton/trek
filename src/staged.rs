@@ -53,3 +53,59 @@ impl Staged {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn root(dir: &tempfile::TempDir) -> StateRoot {
+        StateRoot {
+            root: dir.path().to_path_buf(),
+        }
+    }
+
+    #[test]
+    fn roundtrip_save_load_clear() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = root(&dir);
+        std::fs::create_dir_all(&state.root).unwrap();
+
+        assert!(Staged::load(&state).unwrap().is_none());
+
+        let s = Staged {
+            ticket: "FUN-1".into(),
+            suffix: Some("migration".into()),
+            snapshots: vec![Snapshot {
+                repo: "api".into(),
+                branch: Some("main".into()),
+                head_sha: "abc123".into(),
+                clean: true,
+            }],
+            partial: false,
+        };
+        s.save(&state).unwrap();
+
+        let loaded = Staged::load(&state).unwrap().unwrap();
+        assert_eq!(loaded.ticket, "FUN-1");
+        assert_eq!(loaded.suffix.as_deref(), Some("migration"));
+        assert_eq!(loaded.snapshots.len(), 1);
+        assert_eq!(loaded.snapshots[0].repo, "api");
+
+        Staged::clear(&state).unwrap();
+        assert!(Staged::load(&state).unwrap().is_none());
+        // clear on absent is a no-op
+        Staged::clear(&state).unwrap();
+    }
+
+    #[test]
+    fn partial_default_false() {
+        // Missing `partial` field must default to false (back-compat).
+        let dir = tempfile::tempdir().unwrap();
+        let state = root(&dir);
+        std::fs::create_dir_all(&state.root).unwrap();
+        let body = r#"{"ticket":"X","suffix":null,"snapshots":[]}"#;
+        std::fs::write(state.staged_file(), body).unwrap();
+        let loaded = Staged::load(&state).unwrap().unwrap();
+        assert!(!loaded.partial);
+    }
+}

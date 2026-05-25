@@ -67,3 +67,34 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
         .with_context(|| format!("rename {} -> {}", tmp.display(), path.display()))?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn atomic_write_creates_and_overwrites() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("x.json");
+        atomic_write(&p, b"first").unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "first");
+        atomic_write(&p, b"second").unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "second");
+        // No leftover tmp.
+        let leftover = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().starts_with('.'));
+        assert!(!leftover, "tmp file leaked into dir");
+    }
+
+    #[test]
+    fn atomic_write_replaces_atomically() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("body.json");
+        atomic_write(&p, b"{\"a\":1}").unwrap();
+        atomic_write(&p, b"{\"a\":2}").unwrap();
+        let s = std::fs::read_to_string(&p).unwrap();
+        assert_eq!(s, "{\"a\":2}");
+    }
+}
